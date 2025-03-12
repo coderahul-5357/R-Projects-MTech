@@ -1,0 +1,98 @@
+# Load necessary libraries
+library(readr)
+library(dplyr)
+# Load the dataset
+dataset <- read_csv("LCD.csv")
+
+# View the first few rows of the dataset
+head(dataset)
+
+# Check the structure of the dataset
+str(dataset)
+
+# Summary statistics
+summary(dataset)
+
+
+library(ggplot2)
+
+# Age distribution
+ggplot(dataset, aes(x = Age)) +
+  geom_histogram(binwidth = 5, fill = "green", color = "black") +
+  theme_minimal() +
+  labs(title = "Age Distribution", x = "Age", y = "Count")
+
+
+# Scatterplot of Lung Capacity vs. Age
+ggplot(dataset, aes(x = Age, y = `Lung Capacity (cc)`)) +
+  geom_point(color = "darkblue") +
+  theme_minimal() +
+  labs(title = "Lung Capacity vs. Age", x = "Age", y = "Lung Capacity (cc)")
+
+
+# Compute correlations
+correlations <- cor(dataset %>% select(-Gender, -Smoker))
+
+# Visualize correlations
+library(corrplot)
+corrplot(correlations, method = "circle", type = "upper", tl.col = "black")
+
+
+
+# Scale data for clustering
+scaled_data <- scale(dataset %>% select(-Gender, -Smoker))
+
+# Perform k-means clustering
+set.seed(42)
+kmeans_result <- kmeans(scaled_data, centers = 3, nstart = 20)
+
+# Add cluster labels to dataset
+dataset$Cluster <- kmeans_result$cluster
+
+# Visualize clusters
+ggplot(dataset, aes(x = Height, y = `Lung Capacity (cc)`, color = factor(Cluster))) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "K-means Clustering", color = "Cluster")
+
+
+
+# Convert Smoker to factor for classification
+dataset$Smoker <- as.factor(dataset$Smoker)
+
+# Split data into training and testing sets
+library(caret)
+set.seed(42)
+train_index <- createDataPartition(dataset$Smoker, p = 0.8, list = FALSE)
+train_data <- dataset[train_index, ]
+test_data <- dataset[-train_index, ]
+
+# Fit logistic regression model
+logistic_model <- glm(Smoker ~ Height + Exercise + Age + `Lung Capacity (cc)`,
+                      data = train_data, family = "binomial")
+
+# Summary of the model
+summary(logistic_model)
+#str(logistic_model)
+
+# Predict on test data
+predictions <- predict(logistic_model, test_data, type = "response")
+predicted_classes <- ifelse(predictions > 0.5, 1, 0)
+
+# Evaluate the model
+confusionMatrix(as.factor(predicted_classes), test_data$Smoker)
+
+
+library(arules)
+
+# Prepare data for association rules
+categorical_data <- dataset %>%
+  select(Gender, Smoker, Cluster) %>%
+  mutate(across(everything(), as.factor))
+
+# Convert to transactions
+transactions <- as(categorical_data, "transactions")
+
+# Generate association rules
+rules <- apriori(transactions, parameter = list(supp = 0.1, conf = 0.8))
+inspect(rules)
